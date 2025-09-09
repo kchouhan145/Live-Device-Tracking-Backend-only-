@@ -8,7 +8,12 @@ const socketio = require("socket.io");
 
 const server = http.createServer(app);
 
-const io = socketio(server);
+const io = socketio(server, {
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST"]
+    }
+});
 
 app.set("view engine","ejs");
 app.use(express.static(path.join(__dirname,"public")));
