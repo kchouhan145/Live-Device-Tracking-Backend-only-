@@ -2,16 +2,36 @@ const socket = io();
 
 console.log("Hello Jee")
 
+// Generate a persistent device ID
+function getDeviceId() {
+    let id = localStorage.getItem("deviceId");
+    if (!id) {
+        id = "device-" + Math.random().toString(36).substr(2, 9);
+        localStorage.setItem("deviceId", id);
+    }
+    return id;
+}
+const deviceId = getDeviceId();
+
+let lastPosition = { latitude: null, longitude: null };
+const positionThreshold = 0.0001; // Minimum change to send update
+
 if(navigator.geolocation){
-    // console.log("Supported the geolocation");
     navigator.geolocation.watchPosition((position)=>{
         const {latitude,longitude} = position.coords;
-        socket.emit("send-location",{latitude,longitude});
+        // Throttle updates: only emit if position changes significantly
+        if (
+            Math.abs(latitude - (lastPosition.latitude || 0)) > positionThreshold ||
+            Math.abs(longitude - (lastPosition.longitude || 0)) > positionThreshold
+        ) {
+            lastPosition = { latitude, longitude };
+            socket.emit("send-location", { deviceId, latitude, longitude });
+        }
     },(error)=>{
         console.error(error);
     },{
         enableHighAccuracy:true,
-        timeout:5000,
+        timeout:2000,
         maximumAge:0,
     })
 }
@@ -22,23 +42,25 @@ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{
     attribution:"Kartik Chouhan"
 }).addTo(map)
 
-
 const markers = {};
 
 socket.on("receive-location",(data)=>{
-    const {id,latitude,longitude} = data;
-    map.setView([latitude,longitude]);
-    if(markers[id]){
-        markers[id].setLatLng([latitude,longitude]);
+    const {deviceId,latitude,longitude} = data;
+    if(markers[deviceId]){
+        markers[deviceId].setLatLng([latitude,longitude]);
     }
     else{
-        markers[id] = L.marker([latitude,longitude]).addTo(map);
+        markers[deviceId] = L.marker([latitude,longitude]).addTo(map);
+    }
+    // Only set map view for this device
+    if (deviceId === deviceId) {
+        map.setView([latitude,longitude]);
     }
 })
 
-socket.on("user-disconnectedt",(id)=>{
-    if(markers[id]){
-        map.removeLayer(markers[id]);
-        delete marker[id];
+socket.on("user-disconnected",(deviceId)=>{
+    if(markers[deviceId]){
+        map.removeLayer(markers[deviceId]);
+        delete markers[deviceId];
     }
 })
